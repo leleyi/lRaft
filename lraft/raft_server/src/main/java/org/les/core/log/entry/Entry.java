@@ -1,19 +1,18 @@
 package org.les.core.log.entry;
 
-public class Entry {
-    public int getKind() {
-        return 0;
-    }
+public interface Entry {
 
-    public int getIndex() {
-        return 0;
-    }
+    int KIND_NO_OP = 0;
+    int KIND_GENERAL = 1;
+    int KIND_ADD_NODE = 3;
+    int KIND_REMOVE_NODE = 4;
 
-    public int getTerm() {
-        return 0;
-    }
+    public int getKind();
 
-    public byte[] getCommandBytes() {
-        return null;
-    }
+
+    public int getIndex();
+
+    public int getTerm();
+
+    public byte[] getCommandBytes();
 }

@@ -12,6 +12,16 @@ public class RequestVoteRpc implements Serializable {
     private int lastLogIndex = 0;
     private int lastLogTerm = 0;
 
+    public RequestVoteRpc(int term, NodeId candidateId, int lastLogIndex, int lastLogTerm) {
+        this.term = term;
+        this.candidateId = candidateId;
+        this.lastLogIndex = lastLogIndex;
+        this.lastLogTerm = lastLogTerm;
+    }
+
+    public RequestVoteRpc() {
+    }
+
     public int getTerm() {
         return term;
     }

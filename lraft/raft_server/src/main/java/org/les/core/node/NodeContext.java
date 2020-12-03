@@ -1,11 +1,11 @@
 package org.les.core.node;
 
 import com.google.common.eventbus.EventBus;
+import org.les.core.log.entry.Log;
 import org.les.core.node.config.NodeConfig;
 import org.les.core.node.store.NodeStore;
 import org.les.core.rpc.Connector;
 import org.les.core.schedule.Scheduler;
-import sun.rmi.runtime.Log;
 import org.les.core.support.TaskExecutor;
 
 

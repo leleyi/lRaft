@@ -1,13 +1,19 @@
 package org.les.core.node;
 
 import com.google.common.base.Preconditions;
+import com.google.common.eventbus.Subscribe;
 import com.google.common.util.concurrent.FutureCallback;
+import org.les.core.log.entry.EntryMeta;
 import org.les.core.node.role.*;
 import org.les.core.node.store.NodeStore;
 import org.les.core.node.task.GroupConfigChangeTaskHolder;
 import org.les.core.node.task.GroupConfigChangeTaskReference;
 import org.les.core.node.task.NewNodeCatchUpTaskGroup;
+import org.les.core.rpc.message.RequestVoteResult;
+import org.les.core.rpc.message.RequestVoteRpc;
+import org.les.core.rpc.message.RequestVoteRpcMessage;
 import org.les.core.schedule.ElectionTimeout;
+import org.les.core.schedule.LogReplicationTask;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -133,7 +139,6 @@ public class NodeImpl implements Node {
     }
 
     private ElectionTimeout scheduleElectionTimeout() {
-
         ElectionTimeout electionTimeout = context.scheduler().scheduleElectionTimeout(this::electionTimeout);
         return electionTimeout;
     }
@@ -149,16 +154,69 @@ public class NodeImpl implements Node {
         }
         int newTerm = role.getTerm() + 1;
         role.cancelTimeoutOrTask();
-
+        /**
+         *  是否只有一个节点
+         */
         if (context.group().isStandalone()) {
+            if (context.mode() == NodeMode.STANDBY) {
+                logger.info("starts with standby mode, skip election");
+            } else { // 只有一个节点 并且不是 备用
+                logger.info("become leader, term {}", newTerm);
+                restReplicatingStates();
+                changeToRole(new LeaderNodeRole(newTerm, scheduleLogReplicationTask()));
+                context.log().appendEntry(newTerm); //
+            }
+        } else {
+            logger.info("start election");
+            changeToRole(new CandidateNodeRole(newTerm, scheduleElectionTimeout()));
+            EntryMeta lastEntryMeta = context.log().getLastEntryMeta();
+            RequestVoteRpc rpc = new RequestVoteRpc();
+            rpc.setTerm(newTerm);
+            rpc.setCandidateId(context.selfId());
 
+            rpc.setLastLogIndex(lastEntryMeta.getIndex());
+            rpc.setLastLogTerm(lastEntryMeta.getTerm());
+            context.connector().sendRequestVote(rpc, context.group().listEndpointOfMajorExceptSelf());
         }
-        logger.warn("node {}, current role is leader, ignore election timeout", context.selfId());
-
     }
 
-    private void changeToRole(AbstractNodeRole role) {
-        this.role = role;
+    @Subscribe
+    public void OnReceiveRequestVoteRpc(RequestVoteRpcMessage rpcMessage) {
+        context.taskExecutor().submit(()
+                -> context.connector().replyRequestVote(doProcessRequestVoteRpc(rpcMessage), rpcMessage));
+    }
+
+    private RequestVoteResult doProcessRequestVoteRpc(RequestVoteRpcMessage rpcMessage) {
+        // 什么时候会遇到这个问题呢。？
+        if (!context.group().isMemberOfMajor(rpcMessage.getSourceNodeId())) {
+            logger.warn("receive request vote rpc from node {} which is not major node, ignore", rpcMessage.getSourceNodeId());
+            return new RequestVoteResult(role.getTerm(), false);
+        }
+        RequestVoteRpc requestVoteRpc = rpcMessage.get();
+        // partition heal look a node that bigger than me. or reElectionTimeout. the bigger one is candidate.
+        if (requestVoteRpc.getTerm() < role.getTerm()) {
+            logger.debug("term from rpc < current term, don't vote ({} < {})", requestVoteRpc.getTerm(), role.getTerm());
+            return new RequestVoteResult(role.getTerm(), false);
+        }
+        if (requestVoteRpc.getTerm() > role.getTerm()) {
+            // the term is larger, make sure the log index
+
+        }
+        return null;
+    }
+
+
+    private LogReplicationTask scheduleLogReplicationTask() {
+        return null;
+    }
+
+    private void restReplicatingStates() {
+        context.group().resetReplicatingStates(context.log().getNextIndex());
+    }
+
+    private void changeToRole(AbstractNodeRole newRole) {
+        // make sure the info of the nodeRole not change . and update the info
+        role = newRole;
     }
 
 
