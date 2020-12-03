@@ -2,17 +2,14 @@ package org.les.core.node;
 
 import com.google.common.base.Preconditions;
 import com.google.common.util.concurrent.FutureCallback;
-import org.les.core.node.role.AbstractNodeRole;
-import org.les.core.node.role.FollowerNodeRole;
-import org.les.core.node.role.RoleNameAndLeaderId;
-import org.les.core.node.role.RoleState;
+import org.les.core.node.role.*;
 import org.les.core.node.store.NodeStore;
 import org.les.core.node.task.GroupConfigChangeTaskHolder;
 import org.les.core.node.task.GroupConfigChangeTaskReference;
 import org.les.core.node.task.NewNodeCatchUpTaskGroup;
+import org.les.core.schedule.ElectionTimeout;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.les.core.schedule.ElectionTimeout;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -136,11 +133,32 @@ public class NodeImpl implements Node {
     }
 
     private ElectionTimeout scheduleElectionTimeout() {
-        return null;
+
+        ElectionTimeout electionTimeout = context.scheduler().scheduleElectionTimeout(this::electionTimeout);
+        return electionTimeout;
+    }
+
+    private void electionTimeout() {
+        context.taskExecutor().submit(this::doProcessElectionTimeout, LOGGING_FUTURE_CALLBACK);
+    }
+
+    private void doProcessElectionTimeout() {
+        if (role.getName() == RoleName.LEADER) {
+            logger.warn("node {}, current role is leader, ignore election timeout", context.selfId());
+            return;
+        }
+        int newTerm = role.getTerm() + 1;
+        role.cancelTimeoutOrTask();
+
+        if (context.group().isStandalone()) {
+
+        }
+        logger.warn("node {}, current role is leader, ignore election timeout", context.selfId());
+
     }
 
     private void changeToRole(AbstractNodeRole role) {
-
+        this.role = role;
     }
 
 
