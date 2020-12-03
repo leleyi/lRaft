@@ -3,25 +3,11 @@ package org.les.core.log.entry;
 
 import com.google.common.eventbus.EventBus;
 
-public class MemoryLog implements Log {
+public class MemoryLog extends AbstractLog {
     private EventBus eventBus;
 
     public MemoryLog(EventBus eventBus) {
+        super(eventBus);
         this.eventBus = eventBus;
-    }
-
-    @Override
-    public NoOpEntry appendEntry(int newTerm) {
-        return null;
-    }
-
-    @Override
-    public EntryMeta getLastEntryMeta() {
-        return null;
-    }
-
-    @Override
-    public int getNextIndex() {
-        return 0;
     }
 }

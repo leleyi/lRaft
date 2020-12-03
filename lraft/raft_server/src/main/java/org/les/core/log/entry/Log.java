@@ -7,4 +7,6 @@ public interface Log {
     EntryMeta getLastEntryMeta();
 
     int getNextIndex();
+
+    boolean isNewerThan(int lastLogIndex, int lastLogTerm);
 }

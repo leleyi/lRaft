@@ -1,11 +1,26 @@
 package org.les.core.log.entry;
 
 public class EntryMeta {
+
+    private final int kind;
+    private final int index;
+    private final int term;
+
+    public EntryMeta(int kind, int index, int term) {
+        this.kind = kind;
+        this.index = index;
+        this.term = term;
+    }
+
+    public int getKind() {
+        return kind;
+    }
+
     public int getIndex() {
-        return 0;
+        return index;
     }
 
     public int getTerm() {
-        return 0;
+        return term;
     }
 }

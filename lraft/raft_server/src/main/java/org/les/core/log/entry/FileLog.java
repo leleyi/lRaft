@@ -1,17 +1,14 @@
-package org.les.core.log;
+package org.les.core.log.entry;
 
 import com.google.common.eventbus.EventBus;
-import org.les.core.log.entry.EntryMeta;
-import org.les.core.log.entry.Log;
-import org.les.core.log.entry.NoOpEntry;
 
 import java.io.File;
 
-public class FileLog implements Log {
+public class FileLog extends AbstractLog {
 
     public FileLog(File dataDir, EventBus eventBus) {
+        super(eventBus);
     }
-
     @Override
     public NoOpEntry appendEntry(int newTerm) {
         return null;
@@ -26,4 +23,5 @@ public class FileLog implements Log {
     public int getNextIndex() {
         return 0;
     }
+
 }

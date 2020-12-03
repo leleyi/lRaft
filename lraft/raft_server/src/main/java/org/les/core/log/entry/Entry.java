@@ -15,4 +15,7 @@ public interface Entry {
     public int getTerm();
 
     public byte[] getCommandBytes();
+
+
+    EntryMeta getMeta();
 }

@@ -22,6 +22,7 @@ import javax.annotation.Nullable;
 import javax.annotation.concurrent.GuardedBy;
 import javax.annotation.concurrent.ThreadSafe;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
@@ -192,17 +193,49 @@ public class NodeImpl implements Node {
             logger.warn("receive request vote rpc from node {} which is not major node, ignore", rpcMessage.getSourceNodeId());
             return new RequestVoteResult(role.getTerm(), false);
         }
-        RequestVoteRpc requestVoteRpc = rpcMessage.get();
+        RequestVoteRpc rpc = rpcMessage.get();
         // partition heal look a node that bigger than me. or reElectionTimeout. the bigger one is candidate.
-        if (requestVoteRpc.getTerm() < role.getTerm()) {
-            logger.debug("term from rpc < current term, don't vote ({} < {})", requestVoteRpc.getTerm(), role.getTerm());
+        if (rpc.getTerm() < role.getTerm()) {
+            logger.debug("term from rpc < current term, don't vote ({} < {})", rpc.getTerm(), role.getTerm());
             return new RequestVoteResult(role.getTerm(), false);
         }
-        if (requestVoteRpc.getTerm() > role.getTerm()) {
-            // the term is larger, make sure the log index
+        if (rpc.getTerm() > role.getTerm()) {
+            // the term is larger, make sure the log index  is larger
+            boolean voteForCandidate = !context.log().isNewerThan(rpc.getLastLogIndex(), rpc.getLastLogTerm());
+            becomeFollower(rpc.getTerm(), (voteForCandidate ? rpc.getCandidateId() : null), null, true);
 
+            return new RequestVoteResult(rpc.getTerm(), voteForCandidate);
         }
-        return null;
+        // if the term is same to me ,According to my role;
+        switch (role.getName()) {
+            case FOLLOWER:
+                FollowerNodeRole follower = (FollowerNodeRole) role;
+                NodeId votedFor = follower.getVotedFor();
+                // reply vote granted for
+                // 1. not voted and candidate's log is newer than self
+                // 2. voted for candidate
+                if ((votedFor == null && !context.log().isNewerThan(rpc.getLastLogIndex(), rpc.getLastLogTerm())) ||
+                        Objects.equals(votedFor, rpc.getCandidateId())) {
+                    becomeFollower(role.getTerm(), rpc.getCandidateId(), null, true);
+                    return new RequestVoteResult(rpc.getTerm(), true);
+                }
+                return new RequestVoteResult(role.getTerm(), false);
+            case CANDIDATE: // voted for self
+            case LEADER:
+                return new RequestVoteResult(role.getTerm(), false);
+            default:
+                throw new IllegalStateException("unexpected node role [" + role.getName() + "]");
+        }
+    }
+
+    private void becomeFollower(int term, NodeId votedFor, NodeId leaderId, boolean scheduleElectionTimeout) {
+        role.cancelTimeoutOrTask();
+        if (leaderId != null && !leaderId.equals(role.getLeaderId(context.selfId()))) {
+            // had leader . and the leader is not myself;
+            logger.info("current leader is {}, term {}", leaderId, term);
+        }
+        ElectionTimeout electionTimeout = scheduleElectionTimeout ? scheduleElectionTimeout() : ElectionTimeout.NONE;
+        changeToRole(new FollowerNodeRole(term, votedFor, leaderId, electionTimeout));
     }
 
 
