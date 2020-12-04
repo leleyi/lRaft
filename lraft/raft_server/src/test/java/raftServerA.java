@@ -6,7 +6,7 @@ import org.les.core.node.NodeId;
 import java.util.HashSet;
 import java.util.Set;
 
-public class raftServer {
+public class raftServerA {
     public static void main(String[] args) {
 
         Set<NodeEndpoint> endpoints = new HashSet<>();

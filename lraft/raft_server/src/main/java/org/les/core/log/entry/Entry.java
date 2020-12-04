@@ -16,6 +16,5 @@ public interface Entry {
 
     public byte[] getCommandBytes();
 
-
     EntryMeta getMeta();
 }

@@ -4,14 +4,13 @@ import com.google.common.base.Preconditions;
 import com.google.common.eventbus.Subscribe;
 import com.google.common.util.concurrent.FutureCallback;
 import org.les.core.log.entry.EntryMeta;
+import org.les.core.log.snapshot.EntryInSnapshotException;
 import org.les.core.node.role.*;
 import org.les.core.node.store.NodeStore;
 import org.les.core.node.task.GroupConfigChangeTaskHolder;
 import org.les.core.node.task.GroupConfigChangeTaskReference;
 import org.les.core.node.task.NewNodeCatchUpTaskGroup;
-import org.les.core.rpc.message.RequestVoteResult;
-import org.les.core.rpc.message.RequestVoteRpc;
-import org.les.core.rpc.message.RequestVoteRpcMessage;
+import org.les.core.rpc.message.*;
 import org.les.core.schedule.ElectionTimeout;
 import org.les.core.schedule.LogReplicationTask;
 import org.slf4j.Logger;
@@ -140,8 +139,7 @@ public class NodeImpl implements Node {
     }
 
     private ElectionTimeout scheduleElectionTimeout() {
-        ElectionTimeout electionTimeout = context.scheduler().scheduleElectionTimeout(this::electionTimeout);
-        return electionTimeout;
+        return context.scheduler().scheduleElectionTimeout(this::electionTimeout);
     }
 
     private void electionTimeout() {
@@ -155,9 +153,7 @@ public class NodeImpl implements Node {
         }
         int newTerm = role.getTerm() + 1;
         role.cancelTimeoutOrTask();
-        /**
-         *  是否只有一个节点
-         */
+        // is there only have one node;
         if (context.group().isStandalone()) {
             if (context.mode() == NodeMode.STANDBY) {
                 logger.info("starts with standby mode, skip election");
@@ -214,9 +210,12 @@ public class NodeImpl implements Node {
                 // reply vote granted for
                 // 1. not voted and candidate's log is newer than self
                 // 2. voted for candidate
-                if ((votedFor == null && !context.log().isNewerThan(rpc.getLastLogIndex(), rpc.getLastLogTerm())) ||
+                if ((votedFor == null &&
+                        !context.log().isNewerThan(rpc.getLastLogIndex(), rpc.getLastLogTerm())) ||
                         Objects.equals(votedFor, rpc.getCandidateId())) {
+
                     becomeFollower(role.getTerm(), rpc.getCandidateId(), null, true);
+
                     return new RequestVoteResult(rpc.getTerm(), true);
                 }
                 return new RequestVoteResult(role.getTerm(), false);
@@ -226,6 +225,133 @@ public class NodeImpl implements Node {
             default:
                 throw new IllegalStateException("unexpected node role [" + role.getName() + "]");
         }
+    }
+
+    @Subscribe
+    public void onReceiveRequestVoteResult(RequestVoteResult result) {
+        context.taskExecutor().submit(() -> doProcessRequestVoteResult(result), LOGGING_FUTURE_CALLBACK);
+    }
+
+    private void doProcessRequestVoteResult(RequestVoteResult result) {
+        //  term is larger than me.
+        if (result.getTerm() > role.getTerm()) {
+            becomeFollower(result.getTerm(), null, null, true);
+            return;
+        }
+        // I am not a candidate
+        if (role.getName() != RoleName.CANDIDATE) {
+            logger.debug("receive request vote result and current role is not candidate, ignore");
+            return;
+        }
+        // not vote to me
+        if (!result.isVoteGranted()) {
+            return;
+        }
+
+        int currentVotesCount = ((CandidateNodeRole) role).getVotesCount() + 1;
+        int countOfMajor = context.group().getCountOfMajor();
+        logger.debug("votes count {}, major node count {}", currentVotesCount, countOfMajor);
+        role.cancelTimeoutOrTask();
+        // my count over half of major
+        if (currentVotesCount > countOfMajor / 2) {
+            logger.info("become leader, term{}", role.getTerm());
+            restReplicatingStates();
+            changeToRole(new LeaderNodeRole(role.getTerm(), scheduleLogReplicationTask()));
+            context.log().appendEntry(role.getTerm()); // become leader no-op log .. not commit yet;
+            context.connector().resetChannels();
+        } else {
+            // update the votesCount. continue to write the voteResult;
+            changeToRole(new CandidateNodeRole(role.getTerm(), currentVotesCount, scheduleElectionTimeout()));
+        }
+    }
+
+    /**
+     * scheduler do the task
+     *
+     * @return
+     */
+    private LogReplicationTask scheduleLogReplicationTask() {
+        return context.scheduler().scheduleLogReplicationTask(this::replicateLog);
+    }
+
+    /**
+     * thread - >
+     * execute the logic
+     */
+    private void replicateLog() {
+        context.taskExecutor().submit(this::doReplicateLog, LOGGING_FUTURE_CALLBACK);
+    }
+
+    /**
+     * logic of ReplicateLog
+     */
+    private void doReplicateLog() {
+        if (context.group().isStandalone()) {
+            // direct commit
+            context.log().advanceCommitIndex(context.log().getNextIndex() - 1, role.getTerm());
+            return;
+        }
+        for (GroupMember member : context.group().listReplicationTarget()) {
+            if (member.shouldReplicate(context.config().getLogReplicationReadTimeout())) {
+                doReplicateLog(member, context.config().getMaxReplicationEntries());
+            } else {
+                logger.debug("node {} is replicating, skip replication task", member.getId());
+            }
+        }
+    }
+
+    public void doReplicateLog(GroupMember member, int maxEntries) {
+        member.replicateNow();
+        try {
+            AppendEntriesRpc rpc = context
+                    .log()
+                    .createAppendEntriesRpc(role.getTerm(), context.selfId(), member.getNextIndex(), maxEntries);
+
+            context.connector().sendAppendEntries(rpc, member.getEndpoint());
+        } catch (EntryInSnapshotException ignored) {
+            logger.debug("log entry {} in snapshot, replicate with install snapshot RPC", member.getNextIndex());
+            InstallSnapshotRpc rpc = context.log().createInstallSnapshotRpc(role.getTerm(), context.selfId(), 0, context.config().getSnapshotDataLength());
+            context.connector().sendInstallSnapshot(rpc, member.getEndpoint());
+        }
+    }
+
+
+    @Subscribe
+    public void onReceiveAppendEntriesRpc(AppendEntriesRpcMessage rpcMessage) {
+        context.taskExecutor().submit(() -> context.connector().replyAppendEntries(doProcessAppendEntriesRpc(rpcMessage), rpcMessage));
+    }
+
+    private AppendEntriesResult doProcessAppendEntriesRpc(AppendEntriesRpcMessage rpcMessage) {
+        AppendEntriesRpc rpc = rpcMessage.get();
+        if (rpc.getTerm() < role.getTerm()) {
+            return new AppendEntriesResult(rpc.getMessageId(), role.getTerm(), false);
+        }
+        if (rpc.getTerm() > role.getTerm()) {
+            becomeFollower(rpc.getTerm(), null, rpc.getLeaderId(), true);
+            return new AppendEntriesResult(rpc.getMessageId(), rpc.getTerm(), appendEntries(rpc));
+        }
+        // rpc.term == my term
+        switch (role.getName()) {
+            case FOLLOWER:
+                // reset election timeout and append entries
+                becomeFollower(rpc.getTerm(), ((FollowerNodeRole) role).getVotedFor(), rpc.getLeaderId(), true);
+                return new AppendEntriesResult(rpc.getMessageId(), rpc.getTerm(), appendEntries(rpc));
+            case CANDIDATE:
+
+                // more than one candidate but another node won the election
+                becomeFollower(rpc.getTerm(), null, rpc.getLeaderId(), true);
+                return new AppendEntriesResult(rpc.getMessageId(), rpc.getTerm(), appendEntries(rpc));
+            case LEADER:
+                logger.warn("receive append entries rpc from another leader {}, ignore", rpc.getLeaderId());
+                return new AppendEntriesResult(rpc.getMessageId(), rpc.getTerm(), false);
+            default:
+                throw new IllegalStateException("unexpected node role [" + role.getName() + "]");
+        }
+
+    }
+
+    private boolean appendEntries(AppendEntriesRpc rpc) {
+        return true;
     }
 
     private void becomeFollower(int term, NodeId votedFor, NodeId leaderId, boolean scheduleElectionTimeout) {
@@ -238,10 +364,6 @@ public class NodeImpl implements Node {
         changeToRole(new FollowerNodeRole(term, votedFor, leaderId, electionTimeout));
     }
 
-
-    private LogReplicationTask scheduleLogReplicationTask() {
-        return null;
-    }
 
     private void restReplicatingStates() {
         context.group().resetReplicatingStates(context.log().getNextIndex());
