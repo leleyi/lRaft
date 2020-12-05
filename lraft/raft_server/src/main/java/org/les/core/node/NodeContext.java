@@ -37,6 +37,10 @@ public class NodeContext {
         this.selfId = selfId;
     }
 
+    /**
+     * a set save all group member. like <NodeId : GroupMember></>
+     * @return
+     */
     public NodeGroup group() {
         return group;
     }

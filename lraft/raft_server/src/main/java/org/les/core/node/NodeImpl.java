@@ -5,6 +5,7 @@ import com.google.common.eventbus.Subscribe;
 import com.google.common.util.concurrent.FutureCallback;
 import org.les.core.log.entry.EntryMeta;
 import org.les.core.log.snapshot.EntryInSnapshotException;
+import org.les.core.log.state.StateMachine;
 import org.les.core.node.role.*;
 import org.les.core.node.store.NodeStore;
 import org.les.core.node.task.GroupConfigChangeTaskHolder;
@@ -255,7 +256,7 @@ public class NodeImpl implements Node {
         // my count over half of major
         if (currentVotesCount > countOfMajor / 2) {
             logger.info("become leader, term{}", role.getTerm());
-            restReplicatingStates();
+            restReplicatingStates(); // become leader.
             changeToRole(new LeaderNodeRole(role.getTerm(), scheduleLogReplicationTask()));
             context.log().appendEntry(role.getTerm()); // become leader no-op log .. not commit yet;
             context.connector().resetChannels();
@@ -350,9 +351,23 @@ public class NodeImpl implements Node {
 
     }
 
+    /**
+     * Append entries and advance commit index if possible.
+     *
+     * @param rpc rpc
+     * @return {@code true} if log appended, {@code false} if previous log check failed, etc
+     *
+     * prevLogIndex index of log entry immediately preceding new ones
+     * prevLogTerm term of prevLogIndex entry
+     */
     private boolean appendEntries(AppendEntriesRpc rpc) {
-        return true;
+        boolean result = context.log().appendEntriesFromLeader(rpc.getPrevLogIndex(), rpc.getPrevLogTerm(), rpc.getEntries());
+        if (result) {
+            context.log().advanceCommitIndex(Math.min(rpc.getLeaderCommit(), rpc.getLastEntryIndex()), rpc.getTerm());
+        }
+        return result;
     }
+
 
     private void becomeFollower(int term, NodeId votedFor, NodeId leaderId, boolean scheduleElectionTimeout) {
         role.cancelTimeoutOrTask();

@@ -1,6 +1,7 @@
 package org.les.core.node;
 
 
+import org.les.core.log.state.StateMachine;
 import org.les.core.node.role.RoleNameAndLeaderId;
 import org.les.core.node.task.GroupConfigChangeTaskReference;
 

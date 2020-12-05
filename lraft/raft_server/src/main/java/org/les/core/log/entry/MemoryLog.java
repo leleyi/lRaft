@@ -6,8 +6,6 @@ import org.les.core.log.sequence.EntrySequence;
 import org.les.core.log.sequence.MemoryEntrySequence;
 import org.les.core.log.snapshot.EmptySnapshot;
 import org.les.core.log.snapshot.Snapshot;
-import org.les.core.node.NodeId;
-import org.les.core.rpc.message.AppendEntriesRpc;
 
 public class MemoryLog extends AbstractLog {
 
@@ -25,10 +23,5 @@ public class MemoryLog extends AbstractLog {
         super(eventBus);
         this.snapshot = snapshot;
         this.entrySequence = entrySequence;
-    }
-
-    @Override
-    public AppendEntriesRpc createAppendEntriesRpc(int term, NodeId selfId, int nextIndex, int maxEntries) {
-        return null;
     }
 }
