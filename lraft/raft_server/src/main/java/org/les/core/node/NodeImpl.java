@@ -337,11 +337,11 @@ public class NodeImpl implements Node {
                 becomeFollower(rpc.getTerm(), ((FollowerNodeRole) role).getVotedFor(), rpc.getLeaderId(), true);
                 return new AppendEntriesResult(rpc.getMessageId(), rpc.getTerm(), appendEntries(rpc));
             case CANDIDATE:
-
                 // more than one candidate but another node won the election
                 becomeFollower(rpc.getTerm(), null, rpc.getLeaderId(), true);
                 return new AppendEntriesResult(rpc.getMessageId(), rpc.getTerm(), appendEntries(rpc));
             case LEADER:
+                // todo the another leader how can deal with this condition
                 logger.warn("receive append entries rpc from another leader {}, ignore", rpc.getLeaderId());
                 return new AppendEntriesResult(rpc.getMessageId(), rpc.getTerm(), false);
             default:
@@ -363,7 +363,6 @@ public class NodeImpl implements Node {
         ElectionTimeout electionTimeout = scheduleElectionTimeout ? scheduleElectionTimeout() : ElectionTimeout.NONE;
         changeToRole(new FollowerNodeRole(term, votedFor, leaderId, electionTimeout));
     }
-
 
     private void restReplicatingStates() {
         context.group().resetReplicatingStates(context.log().getNextIndex());

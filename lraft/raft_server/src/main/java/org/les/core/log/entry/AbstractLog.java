@@ -55,6 +55,7 @@ abstract class AbstractLog implements Log {
 
     @Override
     public AppendEntriesRpc createAppendEntriesRpc(int term, NodeId selfId, int nextIndex, int maxEntries) {
+
         int nextLogIndex = entrySequence.getNextLogIndex();
         if (nextIndex > nextLogIndex) {
             throw new IllegalArgumentException("illegal next index " + nextIndex);
