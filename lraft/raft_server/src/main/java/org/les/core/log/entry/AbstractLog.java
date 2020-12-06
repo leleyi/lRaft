@@ -12,6 +12,7 @@ import org.les.core.log.snapshot.SnapshotChunk;
 import org.les.core.log.state.EmptyStateMachine;
 import org.les.core.log.state.StateMachine;
 import org.les.core.log.state.StateMachineContext;
+import org.les.core.node.NodeEndpoint;
 import org.les.core.node.NodeId;
 import org.les.core.rpc.message.AppendEntriesRpc;
 import org.les.core.rpc.message.InstallSnapshotRpc;
@@ -20,10 +21,7 @@ import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
 import java.io.IOException;
-import java.util.Collections;
-import java.util.Iterator;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 
 abstract class AbstractLog implements Log {
 
@@ -39,11 +37,6 @@ abstract class AbstractLog implements Log {
 
     AbstractLog(EventBus eventBus) {
         this.eventBus = eventBus;
-    }
-
-    @Override
-    public NoOpEntry appendEntry(int newTerm) {
-        return null;
     }
 
 
@@ -67,6 +60,29 @@ abstract class AbstractLog implements Log {
         logger.debug("last entry ({}, {}), candidate ({}, {})", lastEntryMeta.getIndex(), lastEntryMeta.getTerm(), lastLogIndex, lastLogTerm);
         return lastEntryMeta.getTerm() > lastLogTerm || lastEntryMeta.getIndex() > lastLogIndex;
     }
+
+    @Override
+    public NoOpEntry appendEntry(int term) {
+        NoOpEntry entry = new NoOpEntry(entrySequence.getNextLogIndex(), term);
+        entrySequence.append(entry);
+        return entry;
+    }
+
+    @Override
+    public GeneralEntry appendEntry(int term, byte[] command) {
+        GeneralEntry entry = new GeneralEntry(entrySequence.getNextLogIndex(), term, command);
+        entrySequence.append(entry);
+        return entry;
+    }
+
+    @Override
+    public AddNodeEntry appendEntryForAddNode(int term, Set<NodeEndpoint> nodeEndpoints, NodeEndpoint newNodeEndpoint) {
+        AddNodeEntry entry = new AddNodeEntry(entrySequence.getNextLogIndex(), term, nodeEndpoints, newNodeEndpoint);
+        entrySequence.append(entry);
+        groupConfigEntryList.add(entry);
+        return entry;
+    }
+
 
     /**
      * commit a new entry
@@ -257,7 +273,6 @@ abstract class AbstractLog implements Log {
         }
         return true;
     }
-
 
     private void appendEntriesFromLeader(EntrySequenceView newEntries) {
 
