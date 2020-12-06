@@ -1,19 +1,25 @@
 package org.les.core.log.entry;
 
 import com.google.common.eventbus.EventBus;
+import org.les.core.log.LogException;
+import org.les.core.log.event.GroupConfigEntryBatchRemovedEvent;
+import org.les.core.log.event.SnapshotGenerateEvent;
 import org.les.core.log.sequence.EntrySequence;
+import org.les.core.log.sequence.GroupConfigEntryList;
 import org.les.core.log.snapshot.EntryInSnapshotException;
 import org.les.core.log.snapshot.Snapshot;
 import org.les.core.log.snapshot.SnapshotChunk;
 import org.les.core.log.state.EmptyStateMachine;
-import org.les.core.node.NodeId;
 import org.les.core.log.state.StateMachine;
+import org.les.core.log.state.StateMachineContext;
+import org.les.core.node.NodeId;
 import org.les.core.rpc.message.AppendEntriesRpc;
 import org.les.core.rpc.message.InstallSnapshotRpc;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
+import java.io.IOException;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
@@ -27,6 +33,8 @@ abstract class AbstractLog implements Log {
     protected EntrySequence entrySequence;
     protected int commitIndex = 0;
     protected StateMachine stateMachine = new EmptyStateMachine();
+    private final StateMachineContext stateMachineContext = new StateMachineContextImpl();
+    protected GroupConfigEntryList groupConfigEntryList = new GroupConfigEntryList();
 
 
     AbstractLog(EventBus eventBus) {
@@ -177,26 +185,48 @@ abstract class AbstractLog implements Log {
     }
 
     private void removeEntriesAfter(int index) {
-//        if (entrySequence.isEmpty() || index >= entrySequence.getLastLogIndex()) {
-//            return;
-//        }
-//        int lastApplied = stateMachine.getLastApplied();
-//        if (index < lastApplied && entrySequence.subList(index + 1, lastApplied + 1).stream().anyMatch(this::isApplicable)) {
-//            logger.warn("applied log removed, reapply from start");
-//            applySnapshot(snapshot);
-//            logger.debug("apply log from {} to {}", entrySequence.getFirstLogIndex(), index);
-//            entrySequence.subList(entrySequence.getFirstLogIndex(), index + 1).forEach(this::applyEntry);
-//        }
-//        logger.debug("remove entries after {}", index);
-//        entrySequence.removeAfter(index);
-//        if (index < commitIndex) {
-//            commitIndex = index;
-//        }
-//        GroupConfigEntry firstRemovedEntry = groupConfigEntryList.removeAfter(index);
-//        if (firstRemovedEntry != null) {
-//            logger.info("group config removed");
-//            eventBus.post(new GroupConfigEntryBatchRemovedEvent(firstRemovedEntry));
-//        }
+        if (entrySequence.isEmpty() || index >= entrySequence.getLastLogIndex()) {
+            return;
+        }
+        int lastApplied = stateMachine.getLastApplied(); // have apply index.
+        if (index < lastApplied && entrySequence.subList(index + 1, lastApplied + 1).stream().anyMatch(this::isApplicable)) {
+            logger.warn("applied log removed, reapply from start");
+            applySnapshot(snapshot);
+            logger.debug("apply log from {} to {}", entrySequence.getFirstLogIndex(), index);
+            entrySequence.subList(entrySequence.getFirstLogIndex(), index + 1).forEach(this::applyEntry);
+        }
+        logger.debug("remove entries after {}", index);
+        entrySequence.removeAfter(index);
+        if (index < commitIndex) {
+            commitIndex = index;
+        }
+        // todo what this.
+        GroupConfigEntry firstRemovedEntry = groupConfigEntryList.removeAfter(index);
+        if (firstRemovedEntry != null) {
+            logger.info("group config removed");
+            eventBus.post(new GroupConfigEntryBatchRemovedEvent(firstRemovedEntry));
+        }
+    }
+
+    private void applySnapshot(Snapshot snapshot) {
+        logger.debug("apply snapshot, last included index {}", snapshot.getLastIncludedIndex());
+        try {
+            stateMachine.applySnapshot(snapshot);
+        } catch (IOException e) {
+            throw new LogException("failed to apply snapshot", e);
+        }
+    }
+
+    private void applyEntry(Entry entry) {
+        // skip no-op entry and membership-change entry
+        if (isApplicable(entry)) {
+            stateMachine.applyLog(stateMachineContext, entry.getIndex(), entry.getCommandBytes(), entrySequence.getFirstLogIndex());
+        }
+    }
+
+
+    private boolean isApplicable(Entry entry) {
+        return entry.getKind() == Entry.KIND_GENERAL;
     }
 
 
@@ -285,4 +315,10 @@ abstract class AbstractLog implements Log {
         }
     }
 
+    private class StateMachineContextImpl implements StateMachineContext {
+        @Override
+        public void generateSnapshot(int lastIncludedIndex) {
+            eventBus.post(new SnapshotGenerateEvent(lastIncludedIndex));
+        }
+    }
 }

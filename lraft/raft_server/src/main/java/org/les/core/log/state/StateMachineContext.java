@@ -1,4 +1,6 @@
 package org.les.core.log.state;
 
-public class StateMachineContext {
+
+public interface StateMachineContext {
+    void generateSnapshot(int lastIncludedIndex);
 }
