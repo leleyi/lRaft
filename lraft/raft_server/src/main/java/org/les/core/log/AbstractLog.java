@@ -146,7 +146,14 @@ abstract class AbstractLog implements Log {
 
     @Override
     public void advanceCommitIndex(int newCommitIndex, int currentTerm) {
-
+//        if (!validateNewCommitIndex(newCommitIndex, currentTerm)) {
+//            return;
+//        }
+//        logger.debug("advance commit index from {} to {}", commitIndex, newCommitIndex);
+//        entrySequence.commit(newCommitIndex);
+//        groupConfigsCommitted(newCommitIndex);
+//        commitIndex = newCommitIndex;
+//        advanceApplyIndex();
     }
 
 

@@ -43,5 +43,4 @@ public class LeaderNodeRoleTest {
         CandidateNodeRole role2 = new CandidateNodeRole(2, ElectionTimeout.NONE);
         Assert.assertFalse(role1.stateEquals(role2));
     }
-
 }

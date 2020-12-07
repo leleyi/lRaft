@@ -355,7 +355,7 @@ public class NodeImpl implements Node {
      *
      * @param rpc rpc
      * @return {@code true} if log appended, {@code false} if previous log check failed, etc
-     *
+     * <p>
      * prevLogIndex index of log entry immediately preceding new ones
      * prevLogTerm term of prevLogIndex entry
      */
@@ -365,6 +365,70 @@ public class NodeImpl implements Node {
             context.log().advanceCommitIndex(Math.min(rpc.getLeaderCommit(), rpc.getLastEntryIndex()), rpc.getTerm());
         }
         return result;
+    }
+
+    @Subscribe
+    public void onReceiveAppendEntriesResult(AppendEntriesResultMessage resultMessage) {
+        context.taskExecutor().submit(() -> doProcessAppendEntriesResult(resultMessage), LOGGING_FUTURE_CALLBACK);
+    }
+
+    private void doProcessAppendEntriesResult(AppendEntriesResultMessage resultMessage) {
+        AppendEntriesResult result = resultMessage.get();
+        if (result.getTerm() > role.getTerm()) {
+            becomeFollower(result.getTerm(), null, null, true);
+            return;
+        }
+        if (role.getName() != RoleName.LEADER) {
+            logger.warn("receive append entries result from node {} but current node is not leader, ignore", resultMessage.getSourceNodeId());
+            return;
+        }
+        // dispatch to new node catch up task by node id
+        // 通过节点 id 向新节点发送追踪任务
+        if (newNodeCatchUpTaskGroup.onReceiveAppendEntriesResult(resultMessage, context.log().getNextIndex())) {
+            return;
+        }
+        NodeId sourceNodeId = resultMessage.getSourceNodeId();
+        GroupMember member = context.group().getMember(sourceNodeId);
+        if (member == null) {
+            logger.info("unexpected append entries result from node {}, node maybe removed", sourceNodeId);
+            return;
+        }
+
+        AppendEntriesRpc rpc = resultMessage.getRpc();
+
+        if (result.isSuccess()) {
+            if (!member.isMajor()) {  // removing node
+                if (member.isRemoving()) {
+                    logger.debug("node {} is removing, skip", sourceNodeId);
+                } else {
+                    logger.warn("unexpected append entries result from node {}, not major and not removing", sourceNodeId);
+                }
+                member.stopReplicating();
+                return;
+            }
+
+            // peer
+            // advance commit index if major of match index changed
+            if (member.advanceReplicatingState(rpc.getLastEntryIndex())) {
+                context.log().advanceCommitIndex(context.group().getMatchIndexOfMajor(), role.getTerm());
+            }
+
+            // node caught up
+            if (member.getNextIndex() >= context.log().getNextIndex()) {
+                member.stopReplicating();
+                return;
+            }
+        } else {
+
+            // backoff next index if failed to append entries
+            if (!member.backOffNextIndex()) {
+                logger.warn("cannot back off next index more, node {}", sourceNodeId);
+                member.stopReplicating();
+                return;
+            }
+        }
+        // replicate log to node immediately other than wait for next log replication
+        doReplicateLog(member, context.config().getMaxReplicationEntries());
     }
 
 

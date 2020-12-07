@@ -17,7 +17,6 @@ public class NodeId implements Serializable {
 
     /**
      * Create.
-     *
      * @param value value
      */
     public NodeId(@Nonnull String value) {
@@ -27,7 +26,6 @@ public class NodeId implements Serializable {
 
     /**
      * Create.
-     *
      * @param value value
      * @return node id
      */
@@ -49,7 +47,6 @@ public class NodeId implements Serializable {
 
     /**
      * Get value.
-     *
      * @return value
      */
     @Nonnull
