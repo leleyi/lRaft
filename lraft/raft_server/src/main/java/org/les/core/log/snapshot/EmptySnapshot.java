@@ -31,8 +31,12 @@ public class EmptySnapshot implements Snapshot {
 
     @Override
     public SnapshotChunk readData(int offset, int length) {
-        return null;
+        if (offset == 0) {
+            return new SnapshotChunk(new byte[0], true);
+        }
+        throw new IllegalArgumentException("offset > 0");
     }
+
 
     @Override
     public InputStream getDataStream() {

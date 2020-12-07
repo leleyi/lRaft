@@ -25,7 +25,7 @@ public class MemoryEntrySequence extends AbstractEntrySequence {
 
     @Override
     public int getNextLogIndex() {
-        return 0;
+        return nextLogIndex;
     }
 
     @Override

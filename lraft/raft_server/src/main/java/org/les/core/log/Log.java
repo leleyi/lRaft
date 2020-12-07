@@ -1,5 +1,6 @@
-package org.les.core.log.entry;
+package org.les.core.log;
 
+import org.les.core.log.entry.*;
 import org.les.core.node.NodeEndpoint;
 import org.les.core.node.NodeId;
 import org.les.core.rpc.message.AppendEntriesRpc;

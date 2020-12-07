@@ -1,4 +1,4 @@
-package org.les.core.log.entry;
+package org.les.core.log;
 
 
 import com.google.common.eventbus.EventBus;

@@ -2,6 +2,7 @@ package org.les.core.log.entry;
 
 import org.les.core.node.NodeEndpoint;
 
+import java.util.HashSet;
 import java.util.Set;
 
 public class AddNodeEntry extends GroupConfigEntry {
@@ -17,6 +18,8 @@ public class AddNodeEntry extends GroupConfigEntry {
 
     @Override
     public Set<NodeEndpoint> getResultNodeEndpoints() {
-        return null;
+        Set<NodeEndpoint> configs = new HashSet<>(getNodeEndpoints());
+        configs.add(newNodeEndpoint);
+        return configs;
     }
 }

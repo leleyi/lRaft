@@ -1,7 +1,7 @@
-package org.les.core.log.entry;
+package org.les.core.log;
 
 import com.google.common.eventbus.EventBus;
-import org.les.core.log.LogException;
+import org.les.core.log.entry.*;
 import org.les.core.log.event.GroupConfigEntryBatchRemovedEvent;
 import org.les.core.log.event.SnapshotGenerateEvent;
 import org.les.core.log.sequence.EntrySequence;
@@ -51,7 +51,7 @@ abstract class AbstractLog implements Log {
 
     @Override
     public int getNextIndex() {
-        return 0;
+        return entrySequence.getNextLogIndex();
     }
 
     @Override

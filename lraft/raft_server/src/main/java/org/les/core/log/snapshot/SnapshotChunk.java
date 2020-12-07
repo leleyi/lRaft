@@ -1,11 +1,19 @@
 package org.les.core.log.snapshot;
 
 public class SnapshotChunk {
-    public byte[] toByteArray() {
-        return new byte[1];
+    private final byte[] bytes;
+    private final boolean lastChunk;
+
+    SnapshotChunk(byte[] bytes, boolean lastChunk) {
+        this.bytes = bytes;
+        this.lastChunk = lastChunk;
     }
 
     public boolean isLastChunk() {
-        return false;
+        return lastChunk;
+    }
+
+    public byte[] toByteArray() {
+        return bytes;
     }
 }

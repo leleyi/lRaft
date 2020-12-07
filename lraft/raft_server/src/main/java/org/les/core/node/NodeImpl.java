@@ -185,7 +185,7 @@ public class NodeImpl implements Node {
     }
 
     private RequestVoteResult doProcessRequestVoteRpc(RequestVoteRpcMessage rpcMessage) {
-        // 什么时候会遇到这个问题呢。？
+        // what time will meet this condition;todo
         if (!context.group().isMemberOfMajor(rpcMessage.getSourceNodeId())) {
             logger.warn("receive request vote rpc from node {} which is not major node, ignore", rpcMessage.getSourceNodeId());
             return new RequestVoteResult(role.getTerm(), false);
@@ -214,9 +214,7 @@ public class NodeImpl implements Node {
                 if ((votedFor == null &&
                         !context.log().isNewerThan(rpc.getLastLogIndex(), rpc.getLastLogTerm())) ||
                         Objects.equals(votedFor, rpc.getCandidateId())) {
-
                     becomeFollower(role.getTerm(), rpc.getCandidateId(), null, true);
-
                     return new RequestVoteResult(rpc.getTerm(), true);
                 }
                 return new RequestVoteResult(role.getTerm(), false);
@@ -303,11 +301,12 @@ public class NodeImpl implements Node {
 
     public void doReplicateLog(GroupMember member, int maxEntries) {
         member.replicateNow();
+        //this node's GroupMember's nextIndex.
         try {
             AppendEntriesRpc rpc = context
                     .log()
                     .createAppendEntriesRpc(role.getTerm(), context.selfId(), member.getNextIndex(), maxEntries);
-
+            //for the first the member.nextIndex is null.
             context.connector().sendAppendEntries(rpc, member.getEndpoint());
         } catch (EntryInSnapshotException ignored) {
             logger.debug("log entry {} in snapshot, replicate with install snapshot RPC", member.getNextIndex());

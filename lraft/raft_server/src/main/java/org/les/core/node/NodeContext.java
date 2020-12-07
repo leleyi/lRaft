@@ -1,7 +1,7 @@
 package org.les.core.node;
 
 import com.google.common.eventbus.EventBus;
-import org.les.core.log.entry.Log;
+import org.les.core.log.Log;
 import org.les.core.node.config.NodeConfig;
 import org.les.core.node.store.NodeStore;
 import org.les.core.rpc.Connector;
