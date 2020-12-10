@@ -3,6 +3,7 @@ package org.les.core.log;
 import com.google.common.eventbus.EventBus;
 import org.les.core.log.entry.*;
 import org.les.core.log.event.GroupConfigEntryBatchRemovedEvent;
+import org.les.core.log.event.GroupConfigEntryCommittedEvent;
 import org.les.core.log.event.SnapshotGenerateEvent;
 import org.les.core.log.sequence.EntrySequence;
 import org.les.core.log.sequence.GroupConfigEntryList;
@@ -146,16 +147,50 @@ abstract class AbstractLog implements Log {
 
     @Override
     public void advanceCommitIndex(int newCommitIndex, int currentTerm) {
-//        if (!validateNewCommitIndex(newCommitIndex, currentTerm)) {
-//            return;
-//        }
-//        logger.debug("advance commit index from {} to {}", commitIndex, newCommitIndex);
-//        entrySequence.commit(newCommitIndex);
-//        groupConfigsCommitted(newCommitIndex);
-//        commitIndex = newCommitIndex;
-//        advanceApplyIndex();
+        if (!validateNewCommitIndex(newCommitIndex, currentTerm)) {
+            return;
+        }
+        logger.debug("advance commit index from {} to {}", commitIndex, newCommitIndex);
+        entrySequence.commit(newCommitIndex);
+        groupConfigsCommitted(newCommitIndex);
+        commitIndex = newCommitIndex;
+        advanceApplyIndex();
     }
 
+    private boolean validateNewCommitIndex(int newCommitIndex, int currentTerm) {
+        if (newCommitIndex <= commitIndex) {
+            return false;
+        }
+        Entry entry = entrySequence.getEntry(newCommitIndex);
+        if (entry == null) {
+            logger.debug("log of new commit index {} not found", newCommitIndex);
+            return false;
+        }
+        if (entry.getTerm() != currentTerm) {
+            logger.debug("log term of new commit index != current term ({} != {})", entry.getTerm(), currentTerm);
+            return false;
+        }
+        return true;
+    }
+
+    private void groupConfigsCommitted(int newCommitIndex) {
+        for (GroupConfigEntry groupConfigEntry : groupConfigEntryList.subList(commitIndex + 1, newCommitIndex + 1)) {
+            eventBus.post(new GroupConfigEntryCommittedEvent(groupConfigEntry));
+        }
+    }
+    private void advanceApplyIndex() {
+        // start up and snapshot exists
+        int lastApplied = stateMachine.getLastApplied();
+        int lastIncludedIndex = snapshot.getLastIncludedIndex();
+        if (lastApplied == 0 && lastIncludedIndex > 0) {
+            assert commitIndex >= lastIncludedIndex;
+            applySnapshot(snapshot);
+            lastApplied = lastIncludedIndex;
+        }
+        for (Entry entry : entrySequence.subList(lastApplied + 1, commitIndex + 1)) {
+            applyEntry(entry);
+        }
+    }
 
     @Override
     public boolean appendEntriesFromLeader(int prevLogIndex, int prevLogTerm, List<Entry> leaderEntries) {

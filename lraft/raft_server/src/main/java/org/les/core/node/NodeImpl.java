@@ -382,11 +382,12 @@ public class NodeImpl implements Node {
             logger.warn("receive append entries result from node {} but current node is not leader, ignore", resultMessage.getSourceNodeId());
             return;
         }
+
         // dispatch to new node catch up task by node id
-        // 通过节点 id 向新节点发送追踪任务
         if (newNodeCatchUpTaskGroup.onReceiveAppendEntriesResult(resultMessage, context.log().getNextIndex())) {
             return;
         }
+
         NodeId sourceNodeId = resultMessage.getSourceNodeId();
         GroupMember member = context.group().getMember(sourceNodeId);
         if (member == null) {
@@ -450,6 +451,4 @@ public class NodeImpl implements Node {
         // make sure the info of the nodeRole not change . and update the info
         role = newRole;
     }
-
-
 }

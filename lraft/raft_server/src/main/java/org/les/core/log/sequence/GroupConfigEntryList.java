@@ -2,8 +2,11 @@ package org.les.core.log.sequence;
 
 import org.les.core.log.entry.GroupConfigEntry;
 
+import javax.annotation.Nonnull;
 import java.util.Iterator;
 import java.util.LinkedList;
+import java.util.List;
+import java.util.stream.Collectors;
 
 public class GroupConfigEntryList implements Iterable<GroupConfigEntry> {
 
@@ -17,6 +20,12 @@ public class GroupConfigEntryList implements Iterable<GroupConfigEntry> {
         entries.add(entry);
     }
 
+    /**
+     * Remove entries whose index is greater than {@code entryIndex}.
+     *
+     * @param entryIndex entry index
+     * @return first removed entry, {@code null} if no entry removed
+     */
     public GroupConfigEntry removeAfter(int entryIndex) {
         Iterator<GroupConfigEntry> iterator = entries.iterator();
         GroupConfigEntry firstRemovedEntry = null;
@@ -32,10 +41,24 @@ public class GroupConfigEntryList implements Iterable<GroupConfigEntry> {
         return firstRemovedEntry;
     }
 
+    public List<GroupConfigEntry> subList(int fromIndex, int toIndex) {
+        if (fromIndex > toIndex) {
+            throw new IllegalArgumentException("from index > to index");
+        }
+        return entries.stream()
+                .filter(e -> e.getIndex() >= fromIndex && e.getIndex() < toIndex)
+                .collect(Collectors.toList());
+    }
 
     @Override
+    @Nonnull
     public Iterator<GroupConfigEntry> iterator() {
-        return null;
+        return entries.iterator();
+    }
+
+    @Override
+    public String toString() {
+        return "GroupConfigEntryList{" + entries + '}';
     }
 
 }
