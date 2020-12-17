@@ -317,7 +317,7 @@ abstract class AbstractLog implements Log {
     }
 
     private void appendEntriesFromLeader(EntrySequenceView newEntries) {
-
+        return ;
     }
 
     /**
