@@ -5,6 +5,7 @@ import com.google.common.eventbus.Subscribe;
 import com.google.common.util.concurrent.FutureCallback;
 import org.les.core.log.entry.EntryMeta;
 import org.les.core.log.snapshot.EntryInSnapshotException;
+import org.les.core.log.snapshot.InstallSnapshotState;
 import org.les.core.log.state.StateMachine;
 import org.les.core.node.role.*;
 import org.les.core.node.store.NodeStore;
@@ -302,6 +303,12 @@ public class NodeImpl implements Node {
         }
     }
 
+    /**
+     * @param member
+     * @param maxEntries
+     * @see NodeImpl#onReceiveAppendEntriesRpc(AppendEntriesRpcMessage)
+     * @see NodeImpl#onReceiveInstallSnapshotRpc(InstallSnapshotRpcMessage)
+     */
     public void doReplicateLog(GroupMember member, int maxEntries) {
         member.replicateNow();
         //this node's GroupMember's nextIndex.
@@ -352,6 +359,40 @@ public class NodeImpl implements Node {
         }
 
     }
+
+
+    /**
+     * @param rpcMessage
+     * @see
+     */
+    @Subscribe
+    public void onReceiveInstallSnapshotRpc(InstallSnapshotRpcMessage rpcMessage) {
+        context.taskExecutor().submit(
+                () -> context.connector().replyInstallSnapshot(doProcessInstallSnapshotRpc(rpcMessage), rpcMessage),
+                LOGGING_FUTURE_CALLBACK
+        );
+    }
+
+    private InstallSnapshotResult doProcessInstallSnapshotRpc(InstallSnapshotRpcMessage rpcMessage) {
+        InstallSnapshotRpc rpc = rpcMessage.get();
+
+        // reply current term if term in rpc is smaller than current term
+        if (rpc.getTerm() < role.getTerm()) {
+            return new InstallSnapshotResult(role.getTerm());
+        }
+
+        // step down if term in rpc is larger than current one
+        if (rpc.getTerm() > role.getTerm()) {
+            becomeFollower(rpc.getTerm(), null, rpc.getLeaderId(), true);
+        }
+        InstallSnapshotState state = context.log().installSnapshot(rpc);
+        if (state.getStateName() == InstallSnapshotState.StateName.INSTALLED) {
+            context.group().updateNodes(state.getLastConfig());
+        }
+        // TODO role check?
+        return new InstallSnapshotResult(rpc.getTerm());
+    }
+
 
     /**
      * Append entries and advance commit index if possible.

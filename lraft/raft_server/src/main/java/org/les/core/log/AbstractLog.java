@@ -8,9 +8,7 @@ import org.les.core.log.event.GroupConfigEntryFromLeaderAppendEvent;
 import org.les.core.log.event.SnapshotGenerateEvent;
 import org.les.core.log.sequence.EntrySequence;
 import org.les.core.log.sequence.GroupConfigEntryList;
-import org.les.core.log.snapshot.EntryInSnapshotException;
-import org.les.core.log.snapshot.Snapshot;
-import org.les.core.log.snapshot.SnapshotChunk;
+import org.les.core.log.snapshot.*;
 import org.les.core.log.state.EmptyStateMachine;
 import org.les.core.log.state.StateMachine;
 import org.les.core.log.state.StateMachineContext;
@@ -35,7 +33,7 @@ abstract class AbstractLog implements Log {
     protected StateMachine stateMachine = new EmptyStateMachine();
     private final StateMachineContext stateMachineContext = new StateMachineContextImpl();
     protected GroupConfigEntryList groupConfigEntryList = new GroupConfigEntryList();
-
+    protected SnapshotBuilder snapshotBuilder = new NullSnapshotBuilder();
 
     AbstractLog(EventBus eventBus) {
         this.eventBus = eventBus;
@@ -179,6 +177,7 @@ abstract class AbstractLog implements Log {
             eventBus.post(new GroupConfigEntryCommittedEvent(groupConfigEntry));
         }
     }
+
     private void advanceApplyIndex() {
         // start up and snapshot exists
         int lastApplied = stateMachine.getLastApplied();
@@ -317,7 +316,7 @@ abstract class AbstractLog implements Log {
         return true;
     }
 
-      private void appendEntriesFromLeader(EntrySequenceView leaderEntries) {
+    private void appendEntriesFromLeader(EntrySequenceView leaderEntries) {
         if (leaderEntries.isEmpty()) {
             return;
         }
@@ -327,7 +326,7 @@ abstract class AbstractLog implements Log {
         }
     }
 
-      private void appendEntryFromLeader(Entry leaderEntry) {
+    private void appendEntryFromLeader(Entry leaderEntry) {
         entrySequence.append(leaderEntry);
         if (leaderEntry instanceof GroupConfigEntry) {
             eventBus.post(new GroupConfigEntryFromLeaderAppendEvent(
@@ -335,6 +334,37 @@ abstract class AbstractLog implements Log {
             );
         }
     }
+
+    @Override
+    public InstallSnapshotState installSnapshot(InstallSnapshotRpc rpc) {
+        if (rpc.getLastIndex() <= snapshot.getLastIncludedIndex()) {
+            logger.debug("snapshot's last included index from rpc <= current one ({} <= {}), ignore",
+                    rpc.getLastIndex(), snapshot.getLastIncludedIndex());
+            return new InstallSnapshotState(InstallSnapshotState.StateName.ILLEGAL_INSTALL_SNAPSHOT_RPC);
+        }
+        if (rpc.getOffset() == 0) {
+            assert rpc.getLastConfig() != null;
+            snapshotBuilder.close();
+            snapshotBuilder = newSnapshotBuilder(rpc);
+        } else {
+            snapshotBuilder.append(rpc);
+        }
+        if (!rpc.isDone()) {
+            return new InstallSnapshotState(InstallSnapshotState.StateName.INSTALLING);
+        }
+        Snapshot newSnapshot = snapshotBuilder.build();
+        applySnapshot(newSnapshot);
+        replaceSnapshot(newSnapshot);
+        int lastIncludedIndex = snapshot.getLastIncludedIndex();
+        if (commitIndex < lastIncludedIndex) {
+            commitIndex = lastIncludedIndex;
+        }
+        return new InstallSnapshotState(InstallSnapshotState.StateName.INSTALLED, newSnapshot.getLastConfig());
+    }
+
+    protected abstract SnapshotBuilder newSnapshotBuilder(InstallSnapshotRpc rpc);
+
+    protected abstract void replaceSnapshot(Snapshot newSnapshot);
 
     /**
      *

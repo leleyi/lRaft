@@ -1,6 +1,7 @@
 package org.les.core.log;
 
 import org.les.core.log.entry.*;
+import org.les.core.log.snapshot.InstallSnapshotState;
 import org.les.core.node.NodeEndpoint;
 import org.les.core.node.NodeId;
 import org.les.core.rpc.message.AppendEntriesRpc;
@@ -49,4 +50,6 @@ public interface Log {
     void advanceCommitIndex(int i, int term);
 
     boolean appendEntriesFromLeader(int prevLogIndex, int prevLogTerm, List<Entry> entries);
+
+    InstallSnapshotState installSnapshot(InstallSnapshotRpc rpc);
 }
