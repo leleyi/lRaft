@@ -147,6 +147,9 @@ public class NodeImpl implements Node {
         context.taskExecutor().submit(this::doProcessElectionTimeout, LOGGING_FUTURE_CALLBACK);
     }
 
+    /**
+     * @seeNode
+     */
     private void doProcessElectionTimeout() {
         if (role.getName() == RoleName.LEADER) {
             logger.warn("node {}, current role is leader, ignore election timeout", context.selfId());

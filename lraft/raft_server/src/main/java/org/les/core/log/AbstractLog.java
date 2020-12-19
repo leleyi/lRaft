@@ -4,6 +4,7 @@ import com.google.common.eventbus.EventBus;
 import org.les.core.log.entry.*;
 import org.les.core.log.event.GroupConfigEntryBatchRemovedEvent;
 import org.les.core.log.event.GroupConfigEntryCommittedEvent;
+import org.les.core.log.event.GroupConfigEntryFromLeaderAppendEvent;
 import org.les.core.log.event.SnapshotGenerateEvent;
 import org.les.core.log.sequence.EntrySequence;
 import org.les.core.log.sequence.GroupConfigEntryList;
@@ -316,8 +317,23 @@ abstract class AbstractLog implements Log {
         return true;
     }
 
-    private void appendEntriesFromLeader(EntrySequenceView newEntries) {
-        return ;
+      private void appendEntriesFromLeader(EntrySequenceView leaderEntries) {
+        if (leaderEntries.isEmpty()) {
+            return;
+        }
+        logger.debug("append entries from leader from {} to {}", leaderEntries.getFirstLogIndex(), leaderEntries.getLastLogIndex());
+        for (Entry leaderEntry : leaderEntries) {
+            appendEntryFromLeader(leaderEntry);
+        }
+    }
+
+      private void appendEntryFromLeader(Entry leaderEntry) {
+        entrySequence.append(leaderEntry);
+        if (leaderEntry instanceof GroupConfigEntry) {
+            eventBus.post(new GroupConfigEntryFromLeaderAppendEvent(
+                    (GroupConfigEntry) leaderEntry)
+            );
+        }
     }
 
     /**
