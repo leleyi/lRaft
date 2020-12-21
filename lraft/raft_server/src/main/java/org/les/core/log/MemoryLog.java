@@ -6,6 +6,8 @@ import org.les.core.log.sequence.EntrySequence;
 import org.les.core.log.sequence.MemoryEntrySequence;
 import org.les.core.log.snapshot.EmptySnapshot;
 import org.les.core.log.snapshot.Snapshot;
+import org.les.core.log.snapshot.SnapshotBuilder;
+import org.les.core.rpc.message.InstallSnapshotRpc;
 
 public class MemoryLog extends AbstractLog {
 
@@ -17,6 +19,16 @@ public class MemoryLog extends AbstractLog {
 
     public MemoryLog(EventBus eventBus) {
         this(new EmptySnapshot(), new MemoryEntrySequence(), eventBus);
+    }
+
+    @Override
+    protected SnapshotBuilder newSnapshotBuilder(InstallSnapshotRpc rpc) {
+        return null;
+    }
+
+    @Override
+    protected void replaceSnapshot(Snapshot newSnapshot) {
+
     }
 
     public MemoryLog(Snapshot snapshot, EntrySequence entrySequence, EventBus eventBus) {

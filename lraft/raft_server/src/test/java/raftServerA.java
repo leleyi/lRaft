@@ -1,3 +1,6 @@
+import com.google.common.eventbus.EventBus;
+import com.google.common.eventbus.Subscribe;
+import org.junit.Test;
 import org.les.core.node.Node;
 import org.les.core.node.NodeBuilder;
 import org.les.core.node.NodeEndpoint;
@@ -23,4 +26,23 @@ public class raftServerA {
                 .build();
         node.start();
     }
+
+    @Test
+    public void TestEventBus() {
+        EventBus bus = new EventBus();
+        bus.register(this);
+        bus.post(1024);
+        bus.post("hello world");
+    }
+
+    @Subscribe
+    public void onReceiveInteger(Integer value) {
+        System.out.println("Integer : " + value);
+    }
+
+    @Subscribe
+    public void onReceiveString(String value) {
+        System.out.println("String : " + value);
+    }
+
 }
