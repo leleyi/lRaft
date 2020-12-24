@@ -464,7 +464,6 @@ public class NodeImpl implements Node {
                 return;
             }
         } else {
-
             // backoff next index if failed to append entries
             if (!member.backOffNextIndex()) {
                 logger.warn("cannot back off next index more, node {}", sourceNodeId);
@@ -476,7 +475,13 @@ public class NodeImpl implements Node {
         doReplicateLog(member, context.config().getMaxReplicationEntries());
     }
 
-
+    /**
+     *
+     * @param term
+     * @param votedFor
+     * @param leaderId
+     * @param scheduleElectionTimeout
+     */
     private void becomeFollower(int term, NodeId votedFor, NodeId leaderId, boolean scheduleElectionTimeout) {
         role.cancelTimeoutOrTask();
         if (leaderId != null && !leaderId.equals(role.getLeaderId(context.selfId()))) {
