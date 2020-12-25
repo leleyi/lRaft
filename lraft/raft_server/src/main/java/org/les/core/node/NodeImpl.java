@@ -122,7 +122,7 @@ public class NodeImpl implements Node {
 
     @Override
     public void appendLog(byte[] commandBytes) {
-
+        context.log().appendEntry(role.getTerm(), commandBytes);
     }
 
     @Override
