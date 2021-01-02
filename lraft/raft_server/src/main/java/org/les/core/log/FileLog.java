@@ -5,9 +5,13 @@ import org.les.core.log.entry.EntryMeta;
 import org.les.core.log.entry.NoOpEntry;
 import org.les.core.log.snapshot.Snapshot;
 import org.les.core.log.snapshot.SnapshotBuilder;
+import org.les.core.log.state.StateMachine;
+import org.les.core.node.NodeEndpoint;
+import org.les.core.node.NodeId;
 import org.les.core.rpc.message.InstallSnapshotRpc;
 
 import java.io.File;
+import java.util.Set;
 
 public class FileLog extends AbstractLog {
 
@@ -38,6 +42,26 @@ public class FileLog extends AbstractLog {
     @Override
     public int getNextIndex() {
         return 0;
+    }
+
+    @Override
+    public void setStateMachine(StateMachine stateMachine) {
+
+    }
+
+    @Override
+    public void generateSnapshot(int lastIncludedIndex, Set<NodeEndpoint> groupConfig) {
+
+    }
+
+    @Override
+    public void close() {
+
+    }
+
+    @Override
+    public void appendEntryForRemoveNode(int term, Set<NodeEndpoint> nodeEndpoints, NodeId nodeId) {
+
     }
 
 }
