@@ -2,6 +2,7 @@ package org.les.core.log;
 
 import org.les.core.log.entry.*;
 import org.les.core.log.snapshot.InstallSnapshotState;
+import org.les.core.log.state.StateMachine;
 import org.les.core.node.NodeEndpoint;
 import org.les.core.node.NodeId;
 import org.les.core.rpc.message.AppendEntriesRpc;
@@ -15,6 +16,7 @@ public interface Log {
 
     /**
      * heart beat
+     *
      * @param newTerm
      * @return
      */
@@ -22,6 +24,7 @@ public interface Log {
 
     /**
      * command entry
+     *
      * @param newTerm
      * @param command
      * @return
@@ -30,6 +33,7 @@ public interface Log {
 
     /**
      * add Node command
+     *
      * @param term
      * @param nodeEndpoints
      * @param newNodeEndpoint
@@ -52,4 +56,19 @@ public interface Log {
     boolean appendEntriesFromLeader(int prevLogIndex, int prevLogTerm, List<Entry> entries);
 
     InstallSnapshotState installSnapshot(InstallSnapshotRpc rpc);
+
+
+    void setStateMachine(StateMachine stateMachine);
+
+    /**
+     * Generate snapshot.
+     *
+     * @param lastIncludedIndex last included index
+     * @param groupConfig       group config
+     */
+    void generateSnapshot(int lastIncludedIndex, Set<NodeEndpoint> groupConfig);
+
+    void close();
+
+    void appendEntryForRemoveNode(int term, Set<NodeEndpoint> nodeEndpoints, NodeId nodeId);
 }
