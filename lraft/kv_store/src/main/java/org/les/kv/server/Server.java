@@ -15,14 +15,16 @@ public class Server {
     private static final Logger logger = LoggerFactory.getLogger(Server.class);
 
     private final Node node;
+    private final Service service;
     private final int port;
+
 
     private final NioEventLoopGroup bossGroup = new NioEventLoopGroup(1);
     private final NioEventLoopGroup workerGroup = new NioEventLoopGroup(4);
 
     public Server(Node node, int port) {
         this.node = node;
-//        this.service = new Service(node);
+        this.service = new Service(node);
         this.port = port;
     }
 
@@ -38,9 +40,10 @@ public class Server {
                         ChannelPipeline pipeline = ch.pipeline();
                         pipeline.addLast(new Encoder())
                                 .addLast(new Decoder())
-                                .addLast(new ServiceHandler());
+                                .addLast(new ServiceHandler(service));
                     }
                 });
+
         serverBootstrap.bind(this.port);
     }
 
