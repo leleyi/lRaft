@@ -29,7 +29,6 @@ public class Service {
         if (redirect != null) {
             commandRequest.reply(redirect);
         }
-
         SetCommand command = commandRequest.getCommand();
         logger.debug("set {}", command.getKey());
         this.pendingCommands.put(command.getRequestId(), commandRequest);
