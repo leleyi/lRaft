@@ -1,9 +1,9 @@
 package org.les.kv.server;
 
 import org.les.core.node.Node;
-import org.les.kv.message.CommandRequest;
-import org.les.kv.message.GetCommand;
-import org.les.kv.message.SetCommand;
+import org.les.core.node.role.RoleName;
+import org.les.core.node.role.RoleNameAndLeaderId;
+import org.les.kv.message.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -24,10 +24,30 @@ public class Service {
         this.node = node;
     }
 
-    public void set(CommandRequest<SetCommand> setCommandCommandRequest) {
+    public void set(CommandRequest<SetCommand> commandRequest) {
+        Redirect redirect = checkLeadership();
+        if (redirect != null) {
+            commandRequest.reply(redirect);
+        }
+
+        SetCommand command = commandRequest.getCommand();
+        logger.debug("set {}", command.getKey());
+        this.pendingCommands.put(command.getRequestId(), commandRequest);
+        commandRequest.addCloseListener(() -> pendingCommands.remove(command.getRequestId()));
+        this.node.appendLog(command.toBytes());
     }
 
-    public void get(CommandRequest<GetCommand> getCommandCommandRequest) {
+    public void get(CommandRequest<GetCommand> commandRequest) {
+        String key = commandRequest.getCommand().getKey();
+        byte[] value = this.map.get(key);
+        commandRequest.reply(new GetCommandResponse(value));
+    }
 
+    private Redirect checkLeadership() {
+        RoleNameAndLeaderId state = node.getRoleNameAndLeaderId();
+        if (state.getRoleName() != RoleName.LEADER) {
+            return new Redirect(state.getLeaderId());
+        }
+        return null;
     }
 }
