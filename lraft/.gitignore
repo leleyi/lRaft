@@ -1,0 +1,24 @@
+# Created by .ignore support plugin (hsz.mobi)
+### Example user template template
+### Example user template
+
+# IntelliJ project files
+.idea
+*.iml
+out
+gen
+kv_store/src/main/resources/
+kv_store/src/test/
+kv_store/target/
+lib/
+raft_server/src/config/
+raft_server/src/test/java/org/les/core/event/
+raft_server/src/test/java/org/les/core/log/sequence/
+raft_server/src/test/java/org/les/core/log/snapshot/
+raft_server/src/test/java/org/les/core/node/config/
+raft_server/src/test/java/org/les/core/node/store/
+raft_server/src/test/java/org/les/core/node/task/
+raft_server/target/
+source/src/main/resources/
+source/src/test/
+source/target/
