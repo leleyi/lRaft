@@ -1,6 +1,9 @@
 package org.les.kv.message;
 
-public class GetCommand  {
+/**
+ *
+ */
+public class GetCommand {
 
     private final String key;
 

@@ -34,6 +34,7 @@ public class SocketChannel implements Channel {
 
     //todo
     private Object read(InputStream inputStream) {
+        int[] arry = new int[20];
         return null;
     }
 
