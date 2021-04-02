@@ -3,7 +3,6 @@ package org.les.core.node;
 
 import org.les.core.log.state.StateMachine;
 import org.les.core.node.role.RoleNameAndLeaderId;
-import org.les.core.node.task.GroupConfigChangeTaskReference;
 
 import javax.annotation.Nonnull;
 
@@ -55,28 +54,6 @@ public interface Node {
      * @throws NotLeaderException if not leader
      */
     void appendLog(@Nonnull byte[] commandBytes);
-
-    /**
-     * Add node.
-     *
-     * @param endpoint new node endpoint
-     * @return task reference
-     * @throws NotLeaderException if not leader
-     * @throws IllegalStateException if group config change concurrently
-     */
-    @Nonnull
-    GroupConfigChangeTaskReference addNode(@Nonnull NodeEndpoint endpoint);
-
-    /**
-     * Remove node.
-     *
-     * @param id id
-     * @return task reference
-     * @throws NotLeaderException if not leader
-     * @throws IllegalStateException if group config change concurrently
-     */
-    @Nonnull
-    GroupConfigChangeTaskReference removeNode(@Nonnull NodeId id);
 
     /**
      * Stop node.

@@ -12,7 +12,10 @@ import org.les.core.log.snapshot.InstallSnapshotState;
 import org.les.core.log.state.StateMachine;
 import org.les.core.node.role.*;
 import org.les.core.node.store.NodeStore;
-import org.les.core.node.task.*;
+import org.les.core.node.task.GroupConfigChangeTaskHolder;
+import org.les.core.node.task.NewNodeCatchUpTask;
+import org.les.core.node.task.NewNodeCatchUpTaskContext;
+import org.les.core.node.task.NewNodeCatchUpTaskGroup;
 import org.les.core.rpc.message.*;
 import org.les.core.schedule.ElectionTimeout;
 import org.les.core.schedule.LogReplicationTask;
@@ -25,10 +28,8 @@ import javax.annotation.concurrent.GuardedBy;
 import javax.annotation.concurrent.ThreadSafe;
 import java.util.List;
 import java.util.Objects;
-import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Future;
-import java.util.concurrent.TimeoutException;
 
 
 /**
@@ -41,7 +42,7 @@ public class NodeImpl implements Node {
 
     private static final Logger logger = LoggerFactory.getLogger(NodeImpl.class);
 
-    // callback for async tasks.
+    // 异步 回调.
     private static final FutureCallback<Object> LOGGING_FUTURE_CALLBACK = new FutureCallback<Object>() {
         @Override
         public void onSuccess(@Nullable Object result) {
@@ -59,12 +60,11 @@ public class NodeImpl implements Node {
     private volatile AbstractNodeRole role;
     private final List<NodeRoleListener> roleListeners = new CopyOnWriteArrayList<>();
 
-    // NewNodeCatchUpTask and GroupConfigChangeTask related
     private final NewNodeCatchUpTaskGroup newNodeCatchUpTaskGroup = new NewNodeCatchUpTaskGroup();
     private volatile GroupConfigChangeTaskHolder groupConfigChangeTaskHolder = new GroupConfigChangeTaskHolder();
 
     /**
-     * Create with context.
+     *  根据上下文创建.
      *
      * @param context context
      */
@@ -73,8 +73,6 @@ public class NodeImpl implements Node {
     }
 
     /**
-     * Get context.
-     *
      * @return context
      */
     NodeContext getContext() {
@@ -125,7 +123,6 @@ public class NodeImpl implements Node {
 
     /**
      * current node commit.
-     *
      * @param commandBytes command bytes
      */
     @Override
@@ -152,7 +149,9 @@ public class NodeImpl implements Node {
     }
 
     /**
-     * Election timeout
+     *
+     * 倒计时. ElectionTimeOut
+     * 1. Follower -> 转换为 Candidate.
      * <p>
      * Source: scheduler
      * </p>
@@ -170,8 +169,8 @@ public class NodeImpl implements Node {
             return;
         }
 
-        // follower: start election
-        // candidate: restart election
+        // follower: 开始选举.
+        // candidate: 重新选举.
         int newTerm = role.getTerm() + 1;
         role.cancelTimeoutOrTask();
 
@@ -179,8 +178,7 @@ public class NodeImpl implements Node {
             if (context.mode() == NodeMode.STANDBY) {
                 logger.info("starts with standby mode, skip election");
             } else {
-
-                // become leader
+                // 成为Leader了.
                 logger.info("become leader, term {}", newTerm);
                 resetReplicatingStates();
                 changeToRole(new LeaderNodeRole(newTerm, scheduleLogReplicationTask()));
@@ -189,7 +187,6 @@ public class NodeImpl implements Node {
         } else {
             logger.info("start election");
             changeToRole(new CandidateNodeRole(newTerm, scheduleElectionTimeout()));
-
             // request vote
             EntryMeta lastEntryMeta = context.log().getLastEntryMeta();
             RequestVoteRpc rpc = new RequestVoteRpc();
@@ -202,7 +199,7 @@ public class NodeImpl implements Node {
     }
 
     /**
-     * Become follower.
+     * 角色转换->变成某个节点的Follower.
      *
      * @param term                    term
      * @param votedFor                voted for
@@ -219,7 +216,7 @@ public class NodeImpl implements Node {
     }
 
     /**
-     * Change role.
+     * 角色转换.
      *
      * @param newRole new role
      */
@@ -227,12 +224,10 @@ public class NodeImpl implements Node {
         if (!isStableBetween(role, newRole)) {
             logger.debug("node {}, role state changed -> {}", context.selfId(), newRole);
             RoleState state = newRole.getState();
-
             // update store
             NodeStore store = context.store();
             store.setTerm(state.getTerm());
             store.setVotedFor(state.getVotedFor());
-
             // notify listeners
             roleListeners.forEach(l -> l.nodeRoleChanged(state));
         }
@@ -772,133 +767,6 @@ public class NodeImpl implements Node {
         }
     }
 
-    private class GroupConfigChangeTaskContextImpl implements GroupConfigChangeTaskContext {
-
-        @Override
-        public void addNode(NodeEndpoint endpoint, int nextIndex, int matchIndex) {
-            context.taskExecutor().submit(() -> {
-                context.log().appendEntryForAddNode(role.getTerm(), context.group().listEndpointOfMajor(), endpoint);
-                assert !context.selfId().equals(endpoint.getId());
-                context.group().addNode(endpoint, nextIndex, matchIndex, true);
-                NodeImpl.this.doReplicateLog();
-            }, LOGGING_FUTURE_CALLBACK);
-        }
-
-        @Override
-        public void downgradeNode(NodeId nodeId) {
-            context.taskExecutor().submit(() -> {
-                context.group().downgrade(nodeId); // current removing in context.
-                Set<NodeEndpoint> nodeEndpoints = context.group().listEndpointOfMajor();
-                context.log().appendEntryForRemoveNode(role.getTerm(), nodeEndpoints, nodeId);
-                NodeImpl.this.doReplicateLog();
-            }, LOGGING_FUTURE_CALLBACK);
-        }
-
-        @Override
-        public void removeNode(NodeId nodeId) {
-            context.taskExecutor().submit(() -> {
-                if (nodeId.equals(context.selfId())) {
-                    logger.info("remove self from group, step down and standby");
-                    becomeFollower(role.getTerm(), null, null, false);
-                }
-                context.group().removeNode(nodeId);
-            }, LOGGING_FUTURE_CALLBACK);
-        }
-
-        @Override
-        public void done() {
-
-            // clear current group config change
-            synchronized (NodeImpl.this) {
-                groupConfigChangeTaskHolder = new GroupConfigChangeTaskHolder();
-            }
-        }
-
-    }
-
-    private final NewNodeCatchUpTaskContext newNodeCatchUpTaskContext = new NewNodeCatchUpTaskContextImpl();
-    private final GroupConfigChangeTaskContext groupConfigChangeTaskContext = new GroupConfigChangeTaskContextImpl();
-
-    @Override
-    @Nonnull
-    public GroupConfigChangeTaskReference addNode(@Nonnull NodeEndpoint endpoint) {
-        Preconditions.checkNotNull(endpoint);
-        ensureLeader();
-
-        // self cannot be added
-        if (context.selfId().equals(endpoint.getId())) {
-            throw new IllegalArgumentException("new node cannot be self");
-        }
-
-        NewNodeCatchUpTask newNodeCatchUpTask = new NewNodeCatchUpTask(newNodeCatchUpTaskContext, endpoint, context.config());
-
-        // task for node exists
-        if (!newNodeCatchUpTaskGroup.add(newNodeCatchUpTask)) {
-            throw new IllegalArgumentException("node " + endpoint.getId() + " is adding");
-        }
-
-        // catch up new server
-        // this will be run in caller thread
-        NewNodeCatchUpTaskResult newNodeCatchUpTaskResult;
-        try {
-            newNodeCatchUpTaskResult = newNodeCatchUpTask.call();
-            switch (newNodeCatchUpTaskResult.getState()) {
-                case REPLICATION_FAILED:
-                    return new FixedResultGroupConfigTaskReference(GroupConfigChangeTaskResult.REPLICATION_FAILED);
-                case TIMEOUT:
-                    return new FixedResultGroupConfigTaskReference(GroupConfigChangeTaskResult.TIMEOUT);
-            }
-        } catch (Exception e) {
-            if (!(e instanceof InterruptedException)) {
-                logger.warn("failed to catch up new node " + endpoint.getId(), e);
-            }
-            return new FixedResultGroupConfigTaskReference(GroupConfigChangeTaskResult.ERROR);
-        }
-
-        // new server caught up
-        // wait for previous group config change
-        // it will wait forever by default, but you can change to fixed timeout by setting in NodeConfig
-        GroupConfigChangeTaskResult result = awaitPreviousGroupConfigChangeTask();
-        if (result != null) {
-            return new FixedResultGroupConfigTaskReference(result);
-        }
-
-        // submit group config change task
-        synchronized (this) {
-
-            // it will happen when try to add two or more nodes at the same time
-            if (!groupConfigChangeTaskHolder.isEmpty()) {
-                throw new IllegalStateException("group config change concurrently");
-            }
-
-            AddNodeTask addNodeTask = new AddNodeTask(groupConfigChangeTaskContext, endpoint, newNodeCatchUpTaskResult);
-            Future<GroupConfigChangeTaskResult> future = context.groupConfigChangeTaskExecutor().submit(addNodeTask);
-            GroupConfigChangeTaskReference reference = new FutureGroupConfigChangeTaskReference(future);
-            groupConfigChangeTaskHolder = new GroupConfigChangeTaskHolder(addNodeTask, reference);
-            return reference;
-        }
-    }
-
-    /**
-     * Await previous group config change task.
-     *
-     * @return {@code null} if previous task done, otherwise error or timeout
-     * @see GroupConfigChangeTaskResult#ERROR
-     * @see GroupConfigChangeTaskResult#TIMEOUT
-     */
-    @Nullable
-    private GroupConfigChangeTaskResult awaitPreviousGroupConfigChangeTask() {
-        try {
-            groupConfigChangeTaskHolder.awaitDone(context.config().getPreviousGroupConfigChangeTimeout());
-            return null;
-        } catch (InterruptedException ignored) {
-            return GroupConfigChangeTaskResult.ERROR;
-        } catch (TimeoutException ignored) {
-            logger.info("previous cannot complete within timeout");
-            return GroupConfigChangeTaskResult.TIMEOUT;
-        }
-    }
-
     /**
      * Ensure leader status
      *
@@ -913,31 +781,4 @@ public class NodeImpl implements Node {
         throw new NotLeaderException(result.getRoleName(), endpoint);
     }
 
-    @Override
-    @Nonnull
-    public GroupConfigChangeTaskReference removeNode(@Nonnull NodeId id) {
-        Preconditions.checkNotNull(id);
-        ensureLeader();
-
-        // await previous group config change task
-        GroupConfigChangeTaskResult result = awaitPreviousGroupConfigChangeTask();
-        if (result != null) {
-            return new FixedResultGroupConfigTaskReference(result);
-        }
-
-        // submit group config change task
-        synchronized (this) {
-
-            // it will happen when try to remove two or more nodes at the same time
-            if (!groupConfigChangeTaskHolder.isEmpty()) {
-                throw new IllegalStateException("group config change concurrently");
-            }
-
-            RemoveNodeTask task = new RemoveNodeTask(groupConfigChangeTaskContext, id);
-            Future<GroupConfigChangeTaskResult> future = context.groupConfigChangeTaskExecutor().submit(task);
-            GroupConfigChangeTaskReference reference = new FutureGroupConfigChangeTaskReference(future);
-            groupConfigChangeTaskHolder = new GroupConfigChangeTaskHolder(task, reference);
-            return reference;
-        }
-    }
 }
