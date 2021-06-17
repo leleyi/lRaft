@@ -745,8 +745,7 @@ public class NodeImpl implements Node {
                 AppendEntriesRpc rpc = context.log().createAppendEntriesRpc(role.getTerm(), context.selfId(), nextIndex, context.config().getMaxReplicationEntriesForNewNode());
                 context.connector().sendAppendEntries(rpc, endpoint);
             } catch (EntryInSnapshotException ignored) {
-
-                // change to install snapshot rpc if entry in snapshot
+                // 如果需要快照更更新.
                 logger.debug("log entry {} in snapshot, replicate with install snapshot RPC", nextIndex);
                 InstallSnapshotRpc rpc = context.log().createInstallSnapshotRpc(role.getTerm(), context.selfId(), 0, context.config().getSnapshotDataLength());
                 context.connector().sendInstallSnapshot(rpc, endpoint);
