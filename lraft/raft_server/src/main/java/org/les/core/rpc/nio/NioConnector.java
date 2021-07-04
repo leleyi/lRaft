@@ -93,6 +93,7 @@ public class NioConnector implements Connector {
         }
     }
 
+
     @Override
     public void sendRequestVote(@Nonnull RequestVoteRpc rpc, @Nonnull Collection<NodeEndpoint> destinationEndpoints) {
         Preconditions.checkNotNull(rpc);
