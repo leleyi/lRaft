@@ -43,7 +43,6 @@ public class Server {
                                 .addLast(new ServiceHandler(service));
                     }
                 });
-
         serverBootstrap.bind(this.port);
     }
 
