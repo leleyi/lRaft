@@ -15,7 +15,6 @@ import java.io.IOException;
 public class Encoder extends MessageToByteEncoder<Object> {
     @Override
     protected void encode(ChannelHandlerContext ctx, Object msg, ByteBuf out) throws Exception {
-
         if (msg instanceof Protos.Success) {
             this.writeMessage(MessageConstants.MSG_TYPE_SUCCESS, Protos.Success.newBuilder().build(), out);
         } else if (msg instanceof Failure) {
@@ -60,6 +59,8 @@ public class Encoder extends MessageToByteEncoder<Object> {
 
     private void writeMessage(int messageType, MessageLite message, ByteBuf out) throws IOException {
         // 4字节 + 4字节 + len(bytes)
+
+        //通过自己编码解决粘包问题.
         out.writeInt(messageType);
         byte[] bytes = message.toByteArray();
         out.writeInt(bytes.length);

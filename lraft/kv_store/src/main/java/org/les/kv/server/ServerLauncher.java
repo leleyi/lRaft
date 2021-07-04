@@ -127,5 +127,6 @@ public class ServerLauncher {
         // C: -gc A,localhost,2333 B,localhost,2334 C,localhost,2335 -m group-member -i A -p2 3335
         ServerLauncher launcher = new ServerLauncher();
         launcher.execute(args);
+
     }
 }
